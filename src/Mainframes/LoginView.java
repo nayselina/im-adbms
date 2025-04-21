@@ -6,8 +6,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
 import java.awt.geom.RoundRectangle2D;
-import mainframes.AdminView;
-import mainframes.CustomerView;
+import java.lang.reflect.Method;
 
 public class LoginView extends JFrame {
     private JTextField txtUsername;
@@ -259,24 +258,21 @@ public class LoginView extends JFrame {
             rs = pstmt.executeQuery();
             
             if (rs.next()) {
-                String role = rs.getString("role");
-                int userId = rs.getInt("id");
+                String role = rs.getString("user_type");
+                int userId = rs.getInt("user_id");
                 
                 if ("admin".equalsIgnoreCase(role)) {
                     showInfoMessage("Welcome Admin! 🎉", "Login Successful");
                     dispose();
-                    SwingUtilities.invokeLater(() -> new AdminView().setVisible(true));
+                    
+                    SwingUtilities.invokeLater(() -> {
+                        openAdminView();
+                    });
                 } else {
                     showInfoMessage("Welcome " + username + "! 🎉", "Login Successful");
                     dispose();
                     SwingUtilities.invokeLater(() -> {
-                        try {
-                            // Try with userId parameter first
-                            new CustomerView(userId).setVisible(true);
-                        } catch (NoSuchMethodError e) {
-                            // Fallback to default constructor if no userId parameter exists
-                            new CustomerView().setVisible(true);
-                        }
+                        openCustomerView(userId);
                     });
                 }
             } else {
@@ -299,23 +295,49 @@ public class LoginView extends JFrame {
         }
     }
     
+    private void openAdminView() {
+        try {
+            // Hard-code the expected class location without using reflection or Class.forName
+            mainframes.AdminView adminView = new mainframes.AdminView();
+            adminView.setVisible(true);
+        } catch (NoClassDefFoundError | Exception e) {
+            e.printStackTrace();
+            showErrorMessage("Could not open AdminView. Please check if the class exists.", "Navigation Error");
+            new LoginView().setVisible(true);
+        }
+    }
+    
+    private void openCustomerView(int userId) {
+        try {
+            // Hard-code the expected class location without using reflection
+            mainframes.CustomerView customerView = new mainframes.CustomerView(userId);
+            customerView.setVisible(true);
+        } catch (NoSuchMethodError e) {
+            // No constructor with userId, try no-arg constructor
+            try {
+                mainframes.CustomerView customerView = new mainframes.CustomerView();
+                customerView.setVisible(true);
+            } catch (Exception ex) {
+                handleCustomerViewError(ex);
+            }
+        } catch (Exception e) {
+            handleCustomerViewError(e);
+        }
+    }
+    
+    private void handleCustomerViewError(Exception e) {
+        e.printStackTrace();
+        showErrorMessage("Error opening Customer view. Please check if the class exists.", "Navigation Error");
+        new LoginView().setVisible(true);
+    }
+    
     private void openRegistrationForm() {
         try {
-            // First try if RegisterView exists
-            Class.forName("mainframes.RegisterView");
+            // Hard-code the expected class location without reflection
+            mainframes.RegisterView registerView = new mainframes.RegisterView();
             dispose();
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    // Use reflection to avoid compile-time errors if RegisterView doesn't exist yet
-                    Class<?> registerClass = Class.forName("mainframes.RegisterView");
-                    Object registerView = registerClass.getDeclaredConstructor().newInstance();
-                    registerClass.getMethod("setVisible", boolean.class).invoke(registerView, true);
-                } catch (Exception ex) {
-                    showErrorMessage("Error opening registration form: " + ex.getMessage(), "Error");
-                }
-            });
-        } catch (ClassNotFoundException e) {
-            // RegisterView doesn't exist yet
+            registerView.setVisible(true);
+        } catch (NoClassDefFoundError | Exception e) {
             showInfoMessage("Registration form will be implemented soon.", "Coming Soon");
         }
     }
@@ -332,44 +354,41 @@ public class LoginView extends JFrame {
         JOptionPane.showMessageDialog(this, message, title, JOptionPane.ERROR_MESSAGE);
     }
     
-    public static void main(String[] args) {
+    /**
+     * @param args the command line arguments
+     */
+    public static void main(String args[]) {
+        /* Set the Nimbus look and feel */
+        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
+        /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.
+         * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
+         */
         try {
-            // Set system look and feel for better integration with OS
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            
-            // Custom UI adjustments
-            UIManager.put("OptionPane.background", new Color(252, 248, 232));
-            UIManager.put("Panel.background", new Color(252, 248, 232));
-            UIManager.put("OptionPane.messageForeground", new Color(38, 133, 65));
-            UIManager.put("Button.background", new Color(38, 133, 65));
-            UIManager.put("Button.foreground", Color.WHITE);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        
-        SwingUtilities.invokeLater(() -> {
-            try {
-                // Test database connection on startup
-                Connection testConn = DatabaseConnection.getConnection();
-                if (testConn == null) {
-                    System.err.println("Warning: Could not establish database connection");
-                    JOptionPane.showMessageDialog(null, 
-                        "Could not connect to database. Please check your database configuration.",
-                        "Database Error", 
-                        JOptionPane.ERROR_MESSAGE);
-                } else {
-                    testConn.close();
+            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
+                if ("Nimbus".equals(info.getName())) {
+                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
+                    break;
                 }
-            } catch (Exception e) {
-                System.err.println("Database connection error: " + e.getMessage());
-                e.printStackTrace();
             }
-            
-            new LoginView().setVisible(true);
+        } catch (ClassNotFoundException ex) {
+            java.util.logging.Logger.getLogger(LoginView.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (InstantiationException ex) {
+            java.util.logging.Logger.getLogger(LoginView.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (IllegalAccessException ex) {
+            java.util.logging.Logger.getLogger(LoginView.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (javax.swing.UnsupportedLookAndFeelException ex) {
+            java.util.logging.Logger.getLogger(LoginView.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        }
+        //</editor-fold>
+
+        /* Create and display the form */
+        java.awt.EventQueue.invokeLater(new Runnable() {
+            public void run() {
+                new LoginView().setVisible(true);
+            }
         });
     }
 }
-
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents

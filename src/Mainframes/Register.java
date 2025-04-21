@@ -6,6 +6,8 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.event.*;
 import java.sql.*;
 import javax.swing.border.EmptyBorder;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  *
@@ -20,6 +22,8 @@ public class Register extends javax.swing.JFrame {
     private JPasswordField confirmPasswordField;
     private JTextField contactNumberField;
     private JTextField emailField;
+    private boolean hasContactColumn = false;
+    private boolean hasPhoneColumn = false;
     
     /**
      * Creates new form Register
@@ -27,6 +31,7 @@ public class Register extends javax.swing.JFrame {
     public Register() {
         initComponents();
         connectToDatabase();
+        checkDatabaseStructure();
     }
     
     private void connectToDatabase() {
@@ -37,12 +42,101 @@ public class Register extends javax.swing.JFrame {
                 "root", 
                 "" // Enter your MySQL password here
             );
+            System.out.println("Database connected successfully");
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, 
                 "Database connection failed: " + e.getMessage(), 
                 "Database Error", 
                 JOptionPane.ERROR_MESSAGE
             );
+            e.printStackTrace();
+        }
+    }
+    
+    // Method to check database structure and determine column names
+    private void checkDatabaseStructure() {
+        try {
+            DatabaseMetaData dbm = conn.getMetaData();
+            
+            // Check if users table exists, if not create it
+            ResultSet tables = dbm.getTables(null, null, "users", null);
+            if (!tables.next()) {
+                createUsersTable();
+                return;
+            }
+            
+            // If table exists, check its structure
+            System.out.println("The users table already exists, checking columns...");
+            ResultSet columns = dbm.getColumns(null, null, "users", null);
+            List<String> columnNames = new ArrayList<>();
+            
+            while (columns.next()) {
+                String columnName = columns.getString("COLUMN_NAME");
+                columnNames.add(columnName);
+                System.out.println("Found column: " + columnName);
+                
+                if (columnName.equalsIgnoreCase("contact_number")) {
+                    hasContactColumn = true;
+                } else if (columnName.equalsIgnoreCase("phone_number")) {
+                    hasPhoneColumn = true;
+                }
+            }
+            
+            // If neither contact_number nor phone_number exists, add contact_number column
+            if (!hasContactColumn && !hasPhoneColumn) {
+                alterUsersTable(columnNames);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private void alterUsersTable(List<String> columnNames) {
+        try {
+            Statement stmt = conn.createStatement();
+            
+            // Add missing columns safely
+            if (!columnNames.contains("full_name") && !columnNames.contains("full_name")) {
+                stmt.executeUpdate("ALTER TABLE users ADD COLUMN full_name VARCHAR(100) NOT NULL DEFAULT ''");
+            }
+            
+            if (!columnNames.contains("contact_number") && !columnNames.contains("phone_number")) {
+                stmt.executeUpdate("ALTER TABLE users ADD COLUMN contact_number VARCHAR(20) NOT NULL DEFAULT ''");
+                hasContactColumn = true;
+            }
+            
+            if (!columnNames.contains("email")) {
+                stmt.executeUpdate("ALTER TABLE users ADD COLUMN email VARCHAR(100) NOT NULL DEFAULT ''");
+            }
+            
+            System.out.println("Users table structure updated successfully");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, 
+                "Failed to update table structure: " + e.getMessage(), 
+                "Database Error", 
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+    
+    private void createUsersTable() {
+        try {
+            Statement stmt = conn.createStatement();
+            String sql = "CREATE TABLE users (" +
+                         "id INT AUTO_INCREMENT PRIMARY KEY, " +
+                         "full_name VARCHAR(100) NOT NULL, " +
+                         "username VARCHAR(50) NOT NULL UNIQUE, " +
+                         "password VARCHAR(100) NOT NULL, " +
+                         "contact_number VARCHAR(20) NOT NULL, " +
+                         "email VARCHAR(100) NOT NULL, " +
+                         "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)";
+                         
+            stmt.executeUpdate(sql);
+            hasContactColumn = true;
+            System.out.println("Users table created successfully");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
     
@@ -292,7 +386,22 @@ public class Register extends javax.swing.JFrame {
         }
         
         try {
-            String sql = "INSERT INTO users (full_name, username, password, contact_number, email) VALUES (?, ?, ?, ?, ?)";
+            String sql;
+            // Use the appropriate column based on what exists
+            if (hasContactColumn) {
+                sql = "INSERT INTO users (full_name, username, password, contact_number, email) VALUES (?, ?, ?, ?, ?)";
+            } else if (hasPhoneColumn) {
+                sql = "INSERT INTO users (full_name, username, password, phone_number, email) VALUES (?, ?, ?, ?, ?)";
+            } else {
+                // This shouldn't happen as we should have added a column in checkDatabaseStructure
+                JOptionPane.showMessageDialog(this, 
+                    "Database structure error: No contact or phone column found", 
+                    "Error", 
+                    JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+            
             PreparedStatement pstmt = conn.prepareStatement(sql);
             
             pstmt.setString(1, getFieldValue(fullNameField));
@@ -311,19 +420,30 @@ public class Register extends javax.swing.JFrame {
                 );
                 goBackToLogin();
             }
-            
         } catch (SQLIntegrityConstraintViolationException e) {
             JOptionPane.showMessageDialog(this, 
                 "Username already exists!", 
                 "Registration Error", 
                 JOptionPane.ERROR_MESSAGE
             );
+            e.printStackTrace();
         } catch (SQLException e) {
-            JOptionPane.showMessageDialog(this, 
-                "Database error: " + e.getMessage(), 
-                "Error", 
-                JOptionPane.ERROR_MESSAGE
-            );
+            // Handle specific database errors
+            String errorMessage = e.getMessage();
+            if (errorMessage.contains("doesn't exist")) {
+                JOptionPane.showMessageDialog(this, 
+                    "Database structure issue detected. Please contact system administrator.", 
+                    "Database Error", 
+                    JOptionPane.ERROR_MESSAGE
+                );
+            } else {
+                JOptionPane.showMessageDialog(this, 
+                    "Database error: " + e.getMessage(), 
+                    "Error", 
+                    JOptionPane.ERROR_MESSAGE
+                );
+            }
+            e.printStackTrace();
         }
     }
     
